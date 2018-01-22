@@ -59,13 +59,26 @@ class GitFlowUpdateCommand extends UpdateCommand
         $composer = $this->getComposer(true, $input->getOption('no-plugins'));
 
         $requires = $composer->getPackage()->getRequires();
-        $newRequires = $this->adjustGitFlowPackages($requires);
+
+        $requiresForGitFlow = $requires;
+        $inputPackages = $input->getArgument('packages');
+        if ($inputPackages) {
+            $requiresForGitFlow = $this->filterInputPackages($requiresForGitFlow, $inputPackages);
+        }
+
+        $newRequires = $this->adjustGitFlowPackages($requiresForGitFlow);
         $packages = array_keys($newRequires);
         $composer->getPackage()->setRequires(array_merge($requires, $newRequires));
 
         if (!$input->getOption('no-dev')) {
             $requires = $this->adjustGitFlowPackages($composer->getPackage()->getDevRequires());
-            $newRequires = $this->adjustGitFlowPackages($requires);
+            $requiresForGitFlow = $requires;
+
+            if ($inputPackages) {
+                $requiresForGitFlow = $this->filterInputPackages($requiresForGitFlow, $inputPackages);
+            }
+
+            $newRequires = $this->adjustGitFlowPackages($requiresForGitFlow);
             $packages += array_keys($newRequires);
             $composer->getPackage()->setDevRequires(array_merge($requires, $newRequires));
         }
@@ -74,6 +87,26 @@ class GitFlowUpdateCommand extends UpdateCommand
         $io->writeError('');
 
         return parent::execute($input, $output);
+    }
+
+    /**
+     * Filter given packages to restrict update to a subset of packages
+     *
+     * @param array $requires
+     * @param array $packages
+     *
+     * @return array
+     */
+    protected function filterInputPackages(array $requires, array $packages): array
+    {
+        $newRequires = [];
+        foreach ($packages as $packageName) {
+            $packageName = str_replace('\\*', '.*?', preg_quote($packageName, '/'));
+            $packageName = preg_grep('/^' . $packageName . '$/i', array_keys($requires));
+            $filteredPackages = (array_intersect_key($requires, array_flip($packageName)));
+            $newRequires = array_merge($newRequires, $filteredPackages);
+        }
+        return $newRequires;
     }
 
     /**
